@@ -25,7 +25,8 @@ async function gerarConteudoComResiliencia(prompt: string) {
   let ultimoErro: unknown;
 
   for (const modelo of MODELOS_CANDIDATOS) {
-    for (let tentativa = 1; tentativa <= 3; tentativa++) {
+    // Até 2 tentativas por modelo para não exceder o tempo limite na Vercel
+    for (let tentativa = 1; tentativa <= 2; tentativa++) {
       try {
         return await ai.models.generateContent({
           model: modelo,
@@ -41,8 +42,8 @@ async function gerarConteudoComResiliencia(prompt: string) {
         ultimoErro = err;
         const status = extrairStatusErro(err);
 
-        if (status === 503 && tentativa < 3) {
-          await aguardar(600 * tentativa);
+        if (status === 503 && tentativa < 2) {
+          await aguardar(500);
           continue;
         }
 
@@ -63,7 +64,10 @@ async function consultarGoogleBooks(termo: string): Promise<string | null> {
     const query = encodeURIComponent(termo);
     const res = await fetch(
       `https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=5`,
-      { next: { revalidate: 86400 } }
+      {
+        next: { revalidate: 86400 },
+        signal: AbortSignal.timeout(3500),
+      }
     );
     if (!res.ok) return null;
 
@@ -96,7 +100,10 @@ async function consultarOpenLibrary(titulo: string, autor: string): Promise<stri
     const q = encodeURIComponent(`${titulo} ${autor}`.trim());
     const res = await fetch(
       `https://openlibrary.org/search.json?q=${q}&limit=3`,
-      { next: { revalidate: 86400 } }
+      {
+        next: { revalidate: 86400 },
+        signal: AbortSignal.timeout(3500),
+      }
     );
     if (!res.ok) return null;
 
@@ -120,15 +127,12 @@ async function consultarOpenLibrary(titulo: string, autor: string): Promise<stri
 async function buscarCapaLivro(titulo: string, autor: string): Promise<string | null> {
   const tituloLimpo = titulo.split(":")[0].trim();
 
-  // 1. Google Books com título + autor
   const gb1 = await consultarGoogleBooks(`${tituloLimpo} ${autor}`);
   if (gb1) return gb1;
 
-  // 2. Google Books apenas com o título principal
   const gb2 = await consultarGoogleBooks(tituloLimpo);
   if (gb2) return gb2;
 
-  // 3. Fallback na Open Library
   const ol = await consultarOpenLibrary(tituloLimpo, autor);
   if (ol) return ol;
 
