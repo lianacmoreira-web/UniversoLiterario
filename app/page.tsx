@@ -55,8 +55,22 @@ export default function Home() {
         body: JSON.stringify({ poeta: busca }),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Erro ao buscar dados.");
+      const rawText = await res.text();
+      let data: ResultadoTrilha & { error?: string };
+
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        throw new Error(
+          rawText.trim() ||
+            "A pesquisa demorou mais que o esperado ou retornou uma resposta inválida."
+        );
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error || "Erro ao buscar dados.");
+      }
+
       setResultado(data);
     } catch (err: unknown) {
       setErro(err instanceof Error ? err.message : "Erro inesperado.");
