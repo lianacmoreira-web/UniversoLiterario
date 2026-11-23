@@ -1,7 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { BookOpen, Search, Sparkles, Library, GitCompare, Loader2 } from "lucide-react";
+import {
+  BookOpen,
+  Search,
+  Sparkles,
+  Library,
+  GitCompare,
+  Loader2,
+  Printer,
+} from "lucide-react";
 
 interface LivroLido {
   titulo_livro: string;
@@ -57,6 +65,10 @@ export default function Home() {
     }
   }
 
+  function handleImprimirPDF() {
+    window.print();
+  }
+
   function getBadgeEvidenciaEstilo(tipo: string) {
     if (tipo === "Material") {
       return "bg-emerald-50 text-emerald-800 border border-emerald-200";
@@ -68,9 +80,9 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-[#FAF8F5] text-[#1C1917] font-sans">
+    <main className="min-h-screen bg-[#FAF8F5] text-[#1C1917] font-sans print:bg-white">
       {/* Cabeçalho Acadêmico */}
-      <header className="border-b border-[#E7E5E4] bg-white/80 backdrop-blur-sm sticky top-0 z-10">
+      <header className="border-b border-[#E7E5E4] bg-white/80 backdrop-blur-sm sticky top-0 z-10 print:static print:border-b-2">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <BookOpen className="w-6 h-6 text-[#7C2D12]" />
@@ -84,8 +96,8 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Área de Busca */}
-      <section className="max-w-3xl mx-auto px-6 pt-14 pb-10 text-center">
+      {/* Área de Busca (oculta na impressão) */}
+      <section className="max-w-3xl mx-auto px-6 pt-14 pb-10 text-center print:hidden">
         <h1 className="font-serif text-3xl sm:text-4xl font-bold text-[#1C1917] mb-4">
           Trilha do Universo Literário
         </h1>
@@ -147,7 +159,7 @@ export default function Home() {
 
       {/* Mensagem de Erro */}
       {erro && (
-        <div className="max-w-3xl mx-auto px-6 mb-8">
+        <div className="max-w-3xl mx-auto px-6 mb-8 print:hidden">
           <div className="p-4 rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm">
             {erro}
           </div>
@@ -156,12 +168,22 @@ export default function Home() {
 
       {/* Resultados */}
       {resultado && (
-        <div className="max-w-5xl mx-auto px-6 pb-20 space-y-14">
-          {/* Perfil do Poeta */}
-          <div className="bg-white p-6 sm:p-8 rounded-xl border border-[#E7E5E4] shadow-sm">
-            <h2 className="font-serif text-2xl font-bold text-[#1C1917] mb-2">
-              {resultado.poeta}
-            </h2>
+        <div className="max-w-5xl mx-auto px-6 pb-20 space-y-14 print:pt-6 print:space-y-8">
+          {/* Perfil do Poeta + Botão de PDF */}
+          <div className="bg-white p-6 sm:p-8 rounded-xl border border-[#E7E5E4] shadow-sm print:shadow-none">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-3">
+              <h2 className="font-serif text-2xl font-bold text-[#1C1917]">
+                {resultado.poeta}
+              </h2>
+              <button
+                type="button"
+                onClick={handleImprimirPDF}
+                className="px-4 py-2 rounded-lg border border-[#D6D3D1] bg-[#FAF8F5] hover:bg-[#F5F5F4] text-[#1C1917] text-sm font-medium transition flex items-center gap-2 self-start cursor-pointer print:hidden"
+              >
+                <Printer className="w-4 h-4 text-[#7C2D12]" />
+                Imprimir / Salvar em PDF
+              </button>
+            </div>
             <p className="text-[#44403C] leading-relaxed">{resultado.resumo_biografico}</p>
           </div>
 
@@ -174,14 +196,14 @@ export default function Home() {
               </h3>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 print:grid-cols-2">
               {resultado.lista_leituras.map((livro, idx) => {
                 const mostrarCapa = Boolean(livro.capa_url) && !imagensQuebradas[idx];
 
                 return (
                   <div
                     key={idx}
-                    className="bg-white p-5 rounded-xl border border-[#E7E5E4] shadow-sm flex gap-4 items-start"
+                    className="bg-white p-5 rounded-xl border border-[#E7E5E4] shadow-sm flex gap-4 items-start break-inside-avoid print:shadow-none"
                   >
                     {/* Capa do Livro */}
                     <div className="w-20 h-28 flex-shrink-0 rounded bg-[#F5F5F4] border border-[#E7E5E4] overflow-hidden flex items-center justify-center">
@@ -189,6 +211,7 @@ export default function Home() {
                         <img
                           src={livro.capa_url}
                           alt={`Capa de ${livro.titulo_livro}`}
+                          referrerPolicy="no-referrer"
                           onError={() =>
                             setImagensQuebradas((prev) => ({ ...prev, [idx]: true }))
                           }
@@ -198,7 +221,7 @@ export default function Home() {
                         <div className="text-center p-1.5">
                           <BookOpen className="w-5 h-5 text-[#A8A29E] mx-auto mb-1" />
                           <span className="text-[10px] text-[#78716C] leading-tight block">
-                            Sem capa
+                            Capa indisponível
                           </span>
                         </div>
                       )}
@@ -241,7 +264,7 @@ export default function Home() {
                 {resultado.lista_correlacoes.map((item, idx) => (
                   <div
                     key={idx}
-                    className="bg-white p-6 rounded-xl border border-[#E7E5E4] shadow-sm"
+                    className="bg-white p-6 rounded-xl border border-[#E7E5E4] shadow-sm break-inside-avoid print:shadow-none"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                       <div className="text-sm font-medium text-[#7C2D12]">
