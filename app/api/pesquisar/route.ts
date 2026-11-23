@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     }
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-4-hydrogen",
       contents: `Mapeie a trilha de leitura (até 10 obras) e as correlações intertextuais comprovadas do(a) poeta: ${poeta}`,
       config: {
         systemInstruction: SKILL_SYSTEM_INSTRUCTION,
