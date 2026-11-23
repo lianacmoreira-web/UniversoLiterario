@@ -6,7 +6,6 @@ export const maxDuration = 30;
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// Ajuste a ordem conforme os modelos ativos no seu projeto / Google AI Studio
 const MODELOS_CANDIDATOS = [
   "gemini-4-hydrogen",
   "gemini-flash-latest",
@@ -26,7 +25,6 @@ async function gerarConteudoComResiliencia(prompt: string) {
   let ultimoErro: unknown;
 
   for (const modelo of MODELOS_CANDIDATOS) {
-    // Até 3 tentativas por modelo para absorver picos temporários (503)
     for (let tentativa = 1; tentativa <= 3; tentativa++) {
       try {
         return await ai.models.generateContent({
@@ -43,13 +41,11 @@ async function gerarConteudoComResiliencia(prompt: string) {
         ultimoErro = err;
         const status = extrairStatusErro(err);
 
-        // Em 503 (sobrecarga temporária), aguarda antes de tentar novamente
         if (status === 503 && tentativa < 3) {
           await aguardar(600 * tentativa);
           continue;
         }
 
-        // Em 503 esgotado ou 404 (modelo indisponível), passa ao próximo modelo candidato
         if (status === 503 || status === 404) {
           break;
         }
@@ -62,27 +58,81 @@ async function gerarConteudoComResiliencia(prompt: string) {
   throw ultimoErro;
 }
 
-async function buscarCapaLivro(titulo: string, autor: string): Promise<string | null> {
+async function consultarGoogleBooks(termo: string): Promise<string | null> {
   try {
-    const query = encodeURIComponent(`intitle:${titulo} inauthor:${autor}`);
+    const query = encodeURIComponent(termo);
     const res = await fetch(
-      `https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=1`,
+      `https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=5`,
       { next: { revalidate: 86400 } }
     );
-
     if (!res.ok) return null;
 
     const data = await res.json();
-    const imageLinks = data.items?.[0]?.volumeInfo?.imageLinks;
+    const items = Array.isArray(data.items) ? data.items : [];
 
-    if (imageLinks) {
-      const url = imageLinks.thumbnail || imageLinks.smallThumbnail;
-      return url ? url.replace("http://", "https://") : null;
+    for (const item of items) {
+      const links = item?.volumeInfo?.imageLinks;
+      const rawUrl =
+        links?.extraLarge ||
+        links?.large ||
+        links?.medium ||
+        links?.thumbnail ||
+        links?.smallThumbnail;
+
+      if (rawUrl) {
+        return String(rawUrl)
+          .replace("http://", "https://")
+          .replace("&edge=curl", "");
+      }
     }
     return null;
   } catch {
     return null;
   }
+}
+
+async function consultarOpenLibrary(titulo: string, autor: string): Promise<string | null> {
+  try {
+    const q = encodeURIComponent(`${titulo} ${autor}`.trim());
+    const res = await fetch(
+      `https://openlibrary.org/search.json?q=${q}&limit=3`,
+      { next: { revalidate: 86400 } }
+    );
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    const docs = Array.isArray(data.docs) ? data.docs : [];
+
+    for (const doc of docs) {
+      if (doc?.cover_i) {
+        return `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg`;
+      }
+      if (Array.isArray(doc?.isbn) && doc.isbn.length > 0) {
+        return `https://covers.openlibrary.org/b/isbn/${doc.isbn[0]}-M.jpg`;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function buscarCapaLivro(titulo: string, autor: string): Promise<string | null> {
+  const tituloLimpo = titulo.split(":")[0].trim();
+
+  // 1. Google Books com título + autor
+  const gb1 = await consultarGoogleBooks(`${tituloLimpo} ${autor}`);
+  if (gb1) return gb1;
+
+  // 2. Google Books apenas com o título principal
+  const gb2 = await consultarGoogleBooks(tituloLimpo);
+  if (gb2) return gb2;
+
+  // 3. Fallback na Open Library
+  const ol = await consultarOpenLibrary(tituloLimpo, autor);
+  if (ol) return ol;
+
+  return null;
 }
 
 export async function POST(request: Request) {
