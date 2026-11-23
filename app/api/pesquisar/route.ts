@@ -2,14 +2,72 @@ import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { SKILL_SYSTEM_INSTRUCTION, TRILHA_RESPONSE_SCHEMA } from "@/lib/skill";
 
+export const maxDuration = 30;
+
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+// Ajuste a ordem conforme os modelos ativos no seu projeto / Google AI Studio
+const MODELOS_CANDIDATOS = [
+  "gemini-4-hydrogen",
+  "gemini-flash-latest",
+];
+
+function aguardar(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function extrairStatusErro(err: unknown): number | undefined {
+  if (!err || typeof err !== "object") return undefined;
+  const e = err as { status?: number; code?: number; error?: { code?: number } };
+  return e.status ?? e.code ?? e.error?.code;
+}
+
+async function gerarConteudoComResiliencia(prompt: string) {
+  let ultimoErro: unknown;
+
+  for (const modelo of MODELOS_CANDIDATOS) {
+    // Até 3 tentativas por modelo para absorver picos temporários (503)
+    for (let tentativa = 1; tentativa <= 3; tentativa++) {
+      try {
+        return await ai.models.generateContent({
+          model: modelo,
+          contents: prompt,
+          config: {
+            systemInstruction: SKILL_SYSTEM_INSTRUCTION,
+            responseMimeType: "application/json",
+            responseSchema: TRILHA_RESPONSE_SCHEMA,
+            temperature: 0.1,
+          },
+        });
+      } catch (err) {
+        ultimoErro = err;
+        const status = extrairStatusErro(err);
+
+        // Em 503 (sobrecarga temporária), aguarda antes de tentar novamente
+        if (status === 503 && tentativa < 3) {
+          await aguardar(600 * tentativa);
+          continue;
+        }
+
+        // Em 503 esgotado ou 404 (modelo indisponível), passa ao próximo modelo candidato
+        if (status === 503 || status === 404) {
+          break;
+        }
+
+        throw err;
+      }
+    }
+  }
+
+  throw ultimoErro;
+}
 
 async function buscarCapaLivro(titulo: string, autor: string): Promise<string | null> {
   try {
     const query = encodeURIComponent(`intitle:${titulo} inauthor:${autor}`);
     const res = await fetch(
       `https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=1`,
-      { next: { revalidate: 86400 } } // Cacheia capas por 24h no Next.js
+      { next: { revalidate: 86400 } }
     );
 
     if (!res.ok) return null;
@@ -46,25 +104,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const response = await ai.models.generateContent({
-      model: "gemini-4-hydrogen",
-      contents: `Mapeie a trilha de leitura (até 10 obras) e as correlações intertextuais comprovadas do(a) poeta: ${poeta}`,
-      config: {
-        systemInstruction: SKILL_SYSTEM_INSTRUCTION,
-        responseMimeType: "application/json",
-        responseSchema: TRILHA_RESPONSE_SCHEMA,
-        temperature: 0.1, // Temperatura mínima para máximo rigor filológico
-      },
-    });
+    const prompt = `Mapeie a trilha de leitura (até 10 obras) e as correlações intertextuais comprovadas do(a) poeta: ${poeta}`;
+    const response = await gerarConteudoComResiliencia(prompt);
 
-    const textoResposta = response.text;
+    const textoResposta = response?.text;
     if (!textoResposta) {
       throw new Error("Resposta vazia da IA.");
     }
 
     const dados = JSON.parse(textoResposta);
 
-    // Garante no máximo 10 obras e busca as capas em paralelo
     if (Array.isArray(dados.lista_leituras)) {
       const leiturasLimitadas = dados.lista_leituras.slice(0, 10);
       dados.lista_leituras = await Promise.all(
