@@ -41,7 +41,7 @@ async function gerarConteudoComOrcamento(prompt: string) {
           systemInstruction: SKILL_SYSTEM_INSTRUCTION,
           responseMimeType: "application/json",
           responseSchema: TRILHA_RESPONSE_SCHEMA,
-          temperature: 0.1,
+          temperature: 0.3,
         },
       });
 
