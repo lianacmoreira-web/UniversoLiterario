@@ -6,17 +6,13 @@ export const maxDuration = 30;
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// Modelos ativos com cota disponível no projeto, priorizando os de maior limite e menor latência
 const MODELOS_CANDIDATOS = [
   "gemini-3.5-flash-lite",
   "gemini-3.1-flash-lite",
-  "gemini-3.6-flash",
-  "gemini-4-hydrogen",
 ];
 
-function aguardar(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+// Encerra tentativas de fallback antes do timeout da função serverless na Vercel
+const ORCAMENTO_MAXIMO_MS = 16000;
 
 function extrairStatusErro(err: unknown): number | undefined {
   if (!err || typeof err !== "object") return undefined;
@@ -24,13 +20,21 @@ function extrairStatusErro(err: unknown): number | undefined {
   return e.status ?? e.code ?? e.error?.code;
 }
 
-async function gerarConteudoComResiliencia(prompt: string) {
+async function gerarConteudoComOrcamento(prompt: string) {
+  const inicio = Date.now();
   let ultimoErro: unknown;
 
   for (let i = 0; i < MODELOS_CANDIDATOS.length; i++) {
+    const tempoDecorrido = Date.now() - inicio;
+    if (i > 0 && tempoDecorrido > ORCAMENTO_MAXIMO_MS) {
+      break;
+    }
+
     const modelo = MODELOS_CANDIDATOS[i];
+    const restanteMs = Math.max(4000, ORCAMENTO_MAXIMO_MS - (Date.now() - inicio));
+
     try {
-      return await ai.models.generateContent({
+      const chamadaIA = ai.models.generateContent({
         model: modelo,
         contents: prompt,
         config: {
@@ -40,23 +44,27 @@ async function gerarConteudoComResiliencia(prompt: string) {
           temperature: 0.1,
         },
       });
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error(`Timeout ao consultar o modelo ${modelo}`));
+        }, restanteMs);
+      });
+
+      return await Promise.race([chamadaIA, timeoutPromise]);
     } catch (err) {
       ultimoErro = err;
       const status = extrairStatusErro(err);
 
-      // Se der sobrecarga (503), quota (429) ou indisponível (404), passa para o próximo modelo da lista
-      if (status === 503 || status === 429 || status === 404) {
-        if (i < MODELOS_CANDIDATOS.length - 1) {
-          await aguardar(300);
-          continue;
-        }
+      if (status === 503 || status === 429 || status === 404 || err instanceof Error) {
+        continue;
       }
 
       throw err;
     }
   }
 
-  throw ultimoErro;
+  throw ultimoErro ?? new Error("Tempo limite excedido ao consultar os modelos.");
 }
 
 export async function POST(request: Request) {
@@ -79,7 +87,7 @@ export async function POST(request: Request) {
     }
 
     const prompt = `Mapeie a trilha de leitura (até 10 obras) e as correlações intertextuais comprovadas do(a) poeta: ${poeta}`;
-    const response = await gerarConteudoComResiliencia(prompt);
+    const response = await gerarConteudoComOrcamento(prompt);
 
     const textoResposta = response?.text;
     if (!textoResposta) {
@@ -107,7 +115,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error:
-            "Limite de quota da API atingido no momento. Aguarde alguns instantes e tente novamente, ou verifique a quota da sua chave no Google AI Studio.",
+            "Limite de quota da API atingido no momento. Aguarde alguns instantes e tente novamente.",
         },
         { status: 429 }
       );
@@ -124,7 +132,10 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(
-      { error: "Não foi possível processar a pesquisa literária no momento." },
+      {
+        error:
+          "A pesquisa demorou mais que o esperado ou encontrou instabilidade temporária. Tente novamente em instantes.",
+      },
       { status: 500 }
     );
   }
