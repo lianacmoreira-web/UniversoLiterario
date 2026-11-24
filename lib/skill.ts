@@ -7,11 +7,11 @@ Sua tarefa é mapear de forma abrangente, aprofundada e rigorosa o universo de l
 ### REGRAS DA LISTA 1: ACERVO DE LEITURAS (lista_leituras)
 - Busque mapear entre 7 e 10 obras (até o teto de 10) comprovadamente lidas ou que exerceram influência documentada e relevante na formação poética do autor pesquisado.
 - Priorize variedade representativa da constelação literária do poeta (tradição nacional, poesia estrangeira, ensaística/crítica ou prosa de referência, quando pertinentes e comprovadas).
-- Classifique rigorosamente cada obra em um dos três níveis de evidência (campo "tipo_evidencia"):
-  1. "Material": Exemplar físico localizado na biblioteca pessoal ou acervo institucional do poeta, com marginália, dedicatória ou anotações.
-  2. "Documental": Comprovada por cartas, diários, entrevistas, ensaios, teses, traduções feitas pelo poeta ou registros biográficos e críticos consolidados.
-  3. "Textual": Comprovada por citações diretas, epígrafes explícitas, homenagens ou diálogos intertextuais inequívocos dentro da própria obra do poeta.
-- No campo "justificativa_evidencia", apresente em 2 a 3 frases objetivas e densas a fonte, o contexto crítico ou o dado histórico/textual que sustenta aquela leitura e sua relevância na poética do autor.
+- Classifique rigorosamente cada obra em um dos três níveis de evidência (campo "tipo_evidencia"), garantindo total coerência com o conteúdo de "justificativa_evidencia":
+  1. "Material": Exclusivamente quando houver exemplar físico localizado na biblioteca pessoal ou acervo institucional do poeta, com marginália, dedicatória, grifos ou anotações.
+  2. "Documental": Exclusivamente quando a leitura for comprovada por fontes externas à poesia em si — como entrevistas, ensaios, cartas, diários, teses, traduções assinadas pelo poeta ou registros biográficos e críticos consolidados. A justificativa deve indicar qual tipo de documento ou registro sustenta a leitura.
+  3. "Textual": Exclusivamente quando a leitura se comprovar dentro da própria obra literária do poeta — por meio de citações diretas, epígrafes explícitas, títulos/homenagens ou referências intertextuais inequívocas nos poemas ou livros. A justificativa deve apontar onde ou como essa marca textual aparece na obra do poeta.
+- No campo "justificativa_evidencia", apresente em 2 a 3 frases objetivas e densas o fato, documento ou marca textual que comprova a leitura e sua relevância na poética do autor. Não classifique afinidades temáticas genéricas como "Textual" ou "Documental" sem apontar a base correspondente.
 
 ### REGRAS DA LISTA 2: CORRELAÇÕES INTERTEXTUAIS (lista_correlacoes)
 - Desenvolva um mapeamento rico (idealmente entre 5 e 8 correlações, sempre que houver respaldo crítico ou textual) conectando diretamente obras da Lista 1 a livros ou poemas específicos do poeta pesquisado.
@@ -65,7 +65,7 @@ export const TRILHA_RESPONSE_SCHEMA: Schema = {
           justificativa_evidencia: {
             type: Type.STRING,
             description:
-              "Evidência documental, material ou textual detalhada (2 a 3 frases) que comprova a leitura e sua importância.",
+              "Evidência documental, material ou textual detalhada (2 a 3 frases) coerente com o tipo_evidencia selecionado.",
           },
         },
         required: [
