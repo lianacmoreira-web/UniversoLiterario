@@ -6,10 +6,12 @@ export const maxDuration = 30;
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+// Modelos ativos com cota disponível no projeto, priorizando os de maior limite e menor latência
 const MODELOS_CANDIDATOS = [
-  "gemini-4-hydrogen",
   "gemini-3.5-flash-lite",
   "gemini-3.1-flash-lite",
+  "gemini-3.6-flash",
+  "gemini-4-hydrogen",
 ];
 
 function aguardar(ms: number) {
@@ -25,36 +27,32 @@ function extrairStatusErro(err: unknown): number | undefined {
 async function gerarConteudoComResiliencia(prompt: string) {
   let ultimoErro: unknown;
 
-  for (const modelo of MODELOS_CANDIDATOS) {
-    for (let tentativa = 1; tentativa <= 2; tentativa++) {
-      try {
-        return await ai.models.generateContent({
-          model: modelo,
-          contents: prompt,
-          config: {
-            systemInstruction: SKILL_SYSTEM_INSTRUCTION,
-            responseMimeType: "application/json",
-            responseSchema: TRILHA_RESPONSE_SCHEMA,
-            temperature: 0.1,
-          },
-        });
-      } catch (err) {
-        ultimoErro = err;
-        const status = extrairStatusErro(err);
+  for (let i = 0; i < MODELOS_CANDIDATOS.length; i++) {
+    const modelo = MODELOS_CANDIDATOS[i];
+    try {
+      return await ai.models.generateContent({
+        model: modelo,
+        contents: prompt,
+        config: {
+          systemInstruction: SKILL_SYSTEM_INSTRUCTION,
+          responseMimeType: "application/json",
+          responseSchema: TRILHA_RESPONSE_SCHEMA,
+          temperature: 0.1,
+        },
+      });
+    } catch (err) {
+      ultimoErro = err;
+      const status = extrairStatusErro(err);
 
-        // Em 429 (quota excedida) ou 404, passa imediatamente para o próximo modelo com cota livre
-        if (status === 429 || status === 404) {
-          break;
-        }
-
-        // Em 503 (sobrecarga temporária), tenta mais uma vez rapidamente antes de trocar de modelo
-        if (status === 503 && tentativa < 2) {
-          await aguardar(400);
+      // Se der sobrecarga (503), quota (429) ou indisponível (404), passa para o próximo modelo da lista
+      if (status === 503 || status === 429 || status === 404) {
+        if (i < MODELOS_CANDIDATOS.length - 1) {
+          await aguardar(300);
           continue;
         }
-
-        throw err;
       }
+
+      throw err;
     }
   }
 
@@ -119,7 +117,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error:
-            "O servidor do modelo está com sobrecarga temporária no momento. Aguarde alguns segundos e clique em Gerar Trilha novamente.",
+            "Os servidores dos modelos estão com sobrecarga temporária no momento. Aguarde alguns segundos e clique em Gerar Trilha novamente.",
         },
         { status: 503 }
       );
