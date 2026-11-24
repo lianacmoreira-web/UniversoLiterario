@@ -6,10 +6,7 @@ export const maxDuration = 30;
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-const MODELOS_CANDIDATOS = [
-  "gemini-4-hydrogen",
-  "gemini-flash-latest",
-];
+const MODELO_ATIVO = "gemini-4-hydrogen";
 
 function aguardar(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -24,34 +21,35 @@ function extrairStatusErro(err: unknown): number | undefined {
 async function gerarConteudoComResiliencia(prompt: string) {
   let ultimoErro: unknown;
 
-  for (const modelo of MODELOS_CANDIDATOS) {
-    for (let tentativa = 1; tentativa <= 2; tentativa++) {
-      try {
-        return await ai.models.generateContent({
-          model: modelo,
-          contents: prompt,
-          config: {
-            systemInstruction: SKILL_SYSTEM_INSTRUCTION,
-            responseMimeType: "application/json",
-            responseSchema: TRILHA_RESPONSE_SCHEMA,
-            temperature: 0.1,
-          },
-        });
-      } catch (err) {
-        ultimoErro = err;
-        const status = extrairStatusErro(err);
+  // Faz 1 tentativa inicial e, em caso de 503 (sobrecarga temporária), 1 nova tentativa rápida
+  for (let tentativa = 1; tentativa <= 2; tentativa++) {
+    try {
+      return await ai.models.generateContent({
+        model: MODELO_ATIVO,
+        contents: prompt,
+        config: {
+          systemInstruction: SKILL_SYSTEM_INSTRUCTION,
+          responseMimeType: "application/json",
+          responseSchema: TRILHA_RESPONSE_SCHEMA,
+          temperature: 0.1,
+        },
+      });
+    } catch (err) {
+      ultimoErro = err;
+      const status = extrairStatusErro(err);
 
-        if (status === 503 && tentativa < 2) {
-          await aguardar(400);
-          continue;
-        }
-
-        if (status === 503 || status === 404) {
-          break;
-        }
-
+      // Em 429 (quota excedida), não repete para não agravar o limite nem causar timeout
+      if (status === 429) {
         throw err;
       }
+
+      // Em 503 (pico temporário do servidor), aguarda brevemente e tenta mais uma vez
+      if (status === 503 && tentativa < 2) {
+        await aguardar(500);
+        continue;
+      }
+
+      throw err;
     }
   }
 
@@ -100,6 +98,28 @@ export async function POST(request: Request) {
     return NextResponse.json(dados);
   } catch (error) {
     console.error("Erro na API /api/pesquisar:", error);
+    const status = extrairStatusErro(error);
+
+    if (status === 429) {
+      return NextResponse.json(
+        {
+          error:
+            "Limite de quota da API atingido no momento. Aguarde alguns instantes e tente novamente, ou verifique a quota da sua chave no Google AI Studio.",
+        },
+        { status: 429 }
+      );
+    }
+
+    if (status === 503) {
+      return NextResponse.json(
+        {
+          error:
+            "O servidor do modelo está com sobrecarga temporária no momento. Aguarde alguns segundos e clique em Gerar Trilha novamente.",
+        },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json(
       { error: "Não foi possível processar a pesquisa literária no momento." },
       { status: 500 }
