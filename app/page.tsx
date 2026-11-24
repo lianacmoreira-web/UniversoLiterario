@@ -16,7 +16,6 @@ interface LivroLido {
   autor_livro: string;
   tipo_evidencia: string;
   justificativa_evidencia: string;
-  capa_url: string | null;
 }
 
 interface Correlacao {
@@ -38,7 +37,6 @@ export default function Home() {
   const [carregando, setCarregando] = useState(false);
   const [resultado, setResultado] = useState<ResultadoTrilha | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  const [imagensQuebradas, setImagensQuebradas] = useState<Record<number, boolean>>({});
 
   async function handlePesquisar(e: React.FormEvent) {
     e.preventDefault();
@@ -46,7 +44,6 @@ export default function Home() {
 
     setCarregando(true);
     setErro(null);
-    setImagensQuebradas({});
 
     try {
       const res = await fetch("/api/pesquisar", {
@@ -201,7 +198,7 @@ export default function Home() {
             <p className="text-[#44403C] leading-relaxed">{resultado.resumo_biografico}</p>
           </div>
 
-          {/* LISTA 1: Acervo de Leituras com Capas */}
+          {/* LISTA 1: Acervo de Leituras */}
           <section>
             <div className="flex items-center gap-2.5 mb-6 border-b border-[#E7E5E4] pb-3">
               <Library className="w-5 h-5 text-[#7C2D12]" />
@@ -211,56 +208,27 @@ export default function Home() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 print:grid-cols-2">
-              {resultado.lista_leituras.map((livro, idx) => {
-                const mostrarCapa = Boolean(livro.capa_url) && !imagensQuebradas[idx];
-
-                return (
-                  <div
-                    key={idx}
-                    className="bg-white p-5 rounded-xl border border-[#E7E5E4] shadow-sm flex gap-4 items-start break-inside-avoid print:shadow-none"
+              {resultado.lista_leituras.map((livro, idx) => (
+                <div
+                  key={idx}
+                  className="bg-white p-5 rounded-xl border border-[#E7E5E4] shadow-sm break-inside-avoid print:shadow-none"
+                >
+                  <span
+                    className={`inline-block text-[11px] font-medium px-2 py-0.5 rounded mb-1.5 ${getBadgeEvidenciaEstilo(
+                      livro.tipo_evidencia
+                    )}`}
                   >
-                    {/* Capa do Livro */}
-                    <div className="w-20 h-28 flex-shrink-0 rounded bg-[#F5F5F4] border border-[#E7E5E4] overflow-hidden flex items-center justify-center">
-                      {mostrarCapa && livro.capa_url ? (
-                        <img
-                          src={livro.capa_url}
-                          alt={`Capa de ${livro.titulo_livro}`}
-                          referrerPolicy="no-referrer"
-                          onError={() =>
-                            setImagensQuebradas((prev) => ({ ...prev, [idx]: true }))
-                          }
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="text-center p-1.5">
-                          <BookOpen className="w-5 h-5 text-[#A8A29E] mx-auto mb-1" />
-                          <span className="text-[10px] text-[#78716C] leading-tight block">
-                            Capa indisponível
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Metadados e Evidência */}
-                    <div className="flex-1 min-w-0">
-                      <span
-                        className={`inline-block text-[11px] font-medium px-2 py-0.5 rounded mb-1.5 ${getBadgeEvidenciaEstilo(
-                          livro.tipo_evidencia
-                        )}`}
-                      >
-                        Evidência {livro.tipo_evidencia}
-                      </span>
-                      <h4 className="font-serif font-bold text-base text-[#1C1917] leading-snug">
-                        {livro.titulo_livro}
-                      </h4>
-                      <p className="text-sm text-[#78716C] mb-2">{livro.autor_livro}</p>
-                      <p className="text-xs text-[#44403C] leading-relaxed">
-                        {livro.justificativa_evidencia}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
+                    Evidência {livro.tipo_evidencia}
+                  </span>
+                  <h4 className="font-serif font-bold text-base text-[#1C1917] leading-snug">
+                    {livro.titulo_livro}
+                  </h4>
+                  <p className="text-sm text-[#78716C] mb-2">{livro.autor_livro}</p>
+                  <p className="text-xs text-[#44403C] leading-relaxed">
+                    {livro.justificativa_evidencia}
+                  </p>
+                </div>
+              ))}
             </div>
           </section>
 
