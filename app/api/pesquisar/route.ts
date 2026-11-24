@@ -6,7 +6,11 @@ export const maxDuration = 30;
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-const MODELO_ATIVO = "gemini-4-hydrogen";
+const MODELOS_CANDIDATOS = [
+  "gemini-4-hydrogen",
+  "gemini-3.5-flash-lite",
+  "gemini-3.1-flash-lite",
+];
 
 function aguardar(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -21,35 +25,36 @@ function extrairStatusErro(err: unknown): number | undefined {
 async function gerarConteudoComResiliencia(prompt: string) {
   let ultimoErro: unknown;
 
-  // Faz 1 tentativa inicial e, em caso de 503 (sobrecarga temporária), 1 nova tentativa rápida
-  for (let tentativa = 1; tentativa <= 2; tentativa++) {
-    try {
-      return await ai.models.generateContent({
-        model: MODELO_ATIVO,
-        contents: prompt,
-        config: {
-          systemInstruction: SKILL_SYSTEM_INSTRUCTION,
-          responseMimeType: "application/json",
-          responseSchema: TRILHA_RESPONSE_SCHEMA,
-          temperature: 0.1,
-        },
-      });
-    } catch (err) {
-      ultimoErro = err;
-      const status = extrairStatusErro(err);
+  for (const modelo of MODELOS_CANDIDATOS) {
+    for (let tentativa = 1; tentativa <= 2; tentativa++) {
+      try {
+        return await ai.models.generateContent({
+          model: modelo,
+          contents: prompt,
+          config: {
+            systemInstruction: SKILL_SYSTEM_INSTRUCTION,
+            responseMimeType: "application/json",
+            responseSchema: TRILHA_RESPONSE_SCHEMA,
+            temperature: 0.1,
+          },
+        });
+      } catch (err) {
+        ultimoErro = err;
+        const status = extrairStatusErro(err);
 
-      // Em 429 (quota excedida), não repete para não agravar o limite nem causar timeout
-      if (status === 429) {
+        // Em 429 (quota excedida) ou 404, passa imediatamente para o próximo modelo com cota livre
+        if (status === 429 || status === 404) {
+          break;
+        }
+
+        // Em 503 (sobrecarga temporária), tenta mais uma vez rapidamente antes de trocar de modelo
+        if (status === 503 && tentativa < 2) {
+          await aguardar(400);
+          continue;
+        }
+
         throw err;
       }
-
-      // Em 503 (pico temporário do servidor), aguarda brevemente e tenta mais uma vez
-      if (status === 503 && tentativa < 2) {
-        await aguardar(500);
-        continue;
-      }
-
-      throw err;
     }
   }
 
