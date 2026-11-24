@@ -11,8 +11,8 @@ const MODELOS_CANDIDATOS = [
   "gemini-3.1-flash-lite",
 ];
 
-// Encerra tentativas de fallback antes do timeout da função serverless na Vercel
-const ORCAMENTO_MAXIMO_MS = 16000;
+// Margem segura dentro de maxDuration = 30s para evitar FUNCTION_INVOCATION_TIMEOUT
+const ORCAMENTO_MAXIMO_MS = 22000;
 
 function extrairStatusErro(err: unknown): number | undefined {
   if (!err || typeof err !== "object") return undefined;
@@ -26,12 +26,12 @@ async function gerarConteudoComOrcamento(prompt: string) {
 
   for (let i = 0; i < MODELOS_CANDIDATOS.length; i++) {
     const tempoDecorrido = Date.now() - inicio;
-    if (i > 0 && tempoDecorrido > ORCAMENTO_MAXIMO_MS) {
+    if (i > 0 && tempoDecorrido >= ORCAMENTO_MAXIMO_MS - 2000) {
       break;
     }
 
     const modelo = MODELOS_CANDIDATOS[i];
-    const restanteMs = Math.max(4000, ORCAMENTO_MAXIMO_MS - (Date.now() - inicio));
+    const restanteMs = Math.max(5000, ORCAMENTO_MAXIMO_MS - (Date.now() - inicio));
 
     try {
       const chamadaIA = ai.models.generateContent({
@@ -54,13 +54,7 @@ async function gerarConteudoComOrcamento(prompt: string) {
       return await Promise.race([chamadaIA, timeoutPromise]);
     } catch (err) {
       ultimoErro = err;
-      const status = extrairStatusErro(err);
-
-      if (status === 503 || status === 429 || status === 404 || err instanceof Error) {
-        continue;
-      }
-
-      throw err;
+      continue;
     }
   }
 
@@ -86,7 +80,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const prompt = `Mapeie a trilha de leitura (até 10 obras) e as correlações intertextuais comprovadas do(a) poeta: ${poeta}`;
+    const prompt = `Mapeie a trilha de leitura (7 a 10 obras) e as correlações intertextuais comprovadas do(a) poeta: ${poeta}`;
     const response = await gerarConteudoComOrcamento(prompt);
 
     const textoResposta = response?.text;
