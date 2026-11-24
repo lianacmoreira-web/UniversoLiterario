@@ -25,7 +25,6 @@ async function gerarConteudoComResiliencia(prompt: string) {
   let ultimoErro: unknown;
 
   for (const modelo of MODELOS_CANDIDATOS) {
-    // Até 2 tentativas por modelo para não exceder o tempo limite na Vercel
     for (let tentativa = 1; tentativa <= 2; tentativa++) {
       try {
         return await ai.models.generateContent({
@@ -43,7 +42,7 @@ async function gerarConteudoComResiliencia(prompt: string) {
         const status = extrairStatusErro(err);
 
         if (status === 503 && tentativa < 2) {
-          await aguardar(500);
+          await aguardar(400);
           continue;
         }
 
@@ -57,86 +56,6 @@ async function gerarConteudoComResiliencia(prompt: string) {
   }
 
   throw ultimoErro;
-}
-
-async function consultarGoogleBooks(termo: string): Promise<string | null> {
-  try {
-    const query = encodeURIComponent(termo);
-    const res = await fetch(
-      `https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=5`,
-      {
-        next: { revalidate: 86400 },
-        signal: AbortSignal.timeout(3500),
-      }
-    );
-    if (!res.ok) return null;
-
-    const data = await res.json();
-    const items = Array.isArray(data.items) ? data.items : [];
-
-    for (const item of items) {
-      const links = item?.volumeInfo?.imageLinks;
-      const rawUrl =
-        links?.extraLarge ||
-        links?.large ||
-        links?.medium ||
-        links?.thumbnail ||
-        links?.smallThumbnail;
-
-      if (rawUrl) {
-        return String(rawUrl)
-          .replace("http://", "https://")
-          .replace("&edge=curl", "");
-      }
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-async function consultarOpenLibrary(titulo: string, autor: string): Promise<string | null> {
-  try {
-    const q = encodeURIComponent(`${titulo} ${autor}`.trim());
-    const res = await fetch(
-      `https://openlibrary.org/search.json?q=${q}&limit=3`,
-      {
-        next: { revalidate: 86400 },
-        signal: AbortSignal.timeout(3500),
-      }
-    );
-    if (!res.ok) return null;
-
-    const data = await res.json();
-    const docs = Array.isArray(data.docs) ? data.docs : [];
-
-    for (const doc of docs) {
-      if (doc?.cover_i) {
-        return `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg`;
-      }
-      if (Array.isArray(doc?.isbn) && doc.isbn.length > 0) {
-        return `https://covers.openlibrary.org/b/isbn/${doc.isbn[0]}-M.jpg`;
-      }
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-async function buscarCapaLivro(titulo: string, autor: string): Promise<string | null> {
-  const tituloLimpo = titulo.split(":")[0].trim();
-
-  const gb1 = await consultarGoogleBooks(`${tituloLimpo} ${autor}`);
-  if (gb1) return gb1;
-
-  const gb2 = await consultarGoogleBooks(tituloLimpo);
-  if (gb2) return gb2;
-
-  const ol = await consultarOpenLibrary(tituloLimpo, autor);
-  if (ol) return ol;
-
-  return null;
 }
 
 export async function POST(request: Request) {
@@ -169,21 +88,7 @@ export async function POST(request: Request) {
     const dados = JSON.parse(textoResposta);
 
     if (Array.isArray(dados.lista_leituras)) {
-      const leiturasLimitadas = dados.lista_leituras.slice(0, 10);
-      dados.lista_leituras = await Promise.all(
-        leiturasLimitadas.map(
-          async (livro: { titulo_livro: string; autor_livro: string }) => {
-            const capaUrl = await buscarCapaLivro(
-              livro.titulo_livro,
-              livro.autor_livro
-            );
-            return {
-              ...livro,
-              capa_url: capaUrl,
-            };
-          }
-        )
-      );
+      dados.lista_leituras = dados.lista_leituras.slice(0, 10);
     } else {
       dados.lista_leituras = [];
     }
